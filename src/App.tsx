@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import Player from './pages/Player';
 import Installation from './pages/Installation';
+import Menus from './pages/Menus';
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/admin/:screenId" element={<Admin />} />
         <Route path="/player" element={<Player />} />
         <Route path="/installation" element={<Installation />} />
+        <Route path="/menus" element={<Menus />} />
       </Routes>
     </BrowserRouter>
   );

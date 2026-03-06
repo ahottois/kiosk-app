@@ -57,6 +57,16 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS menus (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 // --- MIGRATION : AJOUT DES COLONNES SI ELLES N'EXISTENT PAS ---
 // Cela évite les erreurs 500 sur les anciennes bases de données
 try {
@@ -89,6 +99,58 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage,
   limits: { fileSize: 100 * 1024 * 1024 } 
+});
+
+// --- ROUTES API MENUS ---
+
+app.get('/api/menus', (req, res) => {
+  try {
+    const menus = db.prepare('SELECT * FROM menus ORDER BY created_at DESC').all();
+    res.json(menus);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/menus', (req, res) => {
+  try {
+    const { name, title, content } = req.body;
+    const stmt = db.prepare('INSERT INTO menus (name, title, content) VALUES (?, ?, ?)');
+    const info = stmt.run(name, title, JSON.stringify(content));
+    res.json({ id: info.lastInsertRowid });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/menus/:id', (req, res) => {
+  try {
+    const menu = db.prepare('SELECT * FROM menus WHERE id = ?').get(req.params.id);
+    if (!menu) return res.status(404).json({ error: 'Menu non trouvé' });
+    res.json({ ...menu, content: JSON.parse((menu as any).content) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/menus/:id', (req, res) => {
+  try {
+    const { name, title, content } = req.body;
+    db.prepare('UPDATE menus SET name = ?, title = ?, content = ? WHERE id = ?')
+      .run(name, title, JSON.stringify(content), req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/menus/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM menus WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- ROUTES API ---

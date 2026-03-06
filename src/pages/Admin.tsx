@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { 
   Play, Plus, Trash2, ArrowUp, ArrowDown, 
   RefreshCw, MonitorPlay, ChevronLeft, Repeat, 
-  Link as LinkIcon, Upload, Radio
+  Link as LinkIcon, Upload, Radio, Utensils
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 
 interface PlaylistItem {
   id: number;
-  type: 'image' | 'video' | 'web' | 'stream';
+  type: 'image' | 'video' | 'web' | 'stream' | 'menu';
   url: string;
   duration: number;
   order_index: number;
@@ -16,15 +16,23 @@ interface PlaylistItem {
   layout_config?: string;
 }
 
+interface Menu {
+  id: number;
+  name: string;
+  content: string;
+}
+
 export default function Admin() {
   const { screenId: urlScreenId } = useParams();
   const screenId = urlScreenId || 'default';
   
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
+  const [menus, setMenus] = useState<Menu[]>([]);
+  const [selectedDishes, setSelectedDishes] = useState<string[]>([]);
   const [loopPlaylist, setLoopPlaylist] = useState(true);
   const [loading, setLoading] = useState(true);
   const [newItem, setNewItem] = useState({ 
-    type: 'image' as 'image' | 'video' | 'web' | 'stream', 
+    type: 'image' as 'image' | 'video' | 'web' | 'stream' | 'menu', 
     url: '', 
     duration: 10,
     loop: false 
@@ -47,8 +55,12 @@ export default function Admin() {
       // On sépare les items de la configuration globale de l'écran
       setPlaylist(data.items);
       setLoopPlaylist(data.config.loop_playlist);
+      
+      const menusRes = await fetch('/api/menus');
+      const menusData = await menusRes.json();
+      setMenus(menusData);
     } catch (err) {
-      console.error('Failed to fetch playlist', err);
+      console.error('Failed to fetch data', err);
     } finally {
       setLoading(false);
     }
@@ -94,6 +106,10 @@ export default function Admin() {
         formData.append('layout_config', JSON.stringify(layoutConfig));
       }
 
+      if (newItem.type === 'menu') {
+        formData.append('layout_config', JSON.stringify({ dishIds: selectedDishes }));
+      }
+
       if (sourceType === 'upload' && file) {
         formData.append('file', file);
       } else {
@@ -108,6 +124,7 @@ export default function Admin() {
       if (!res.ok) throw new Error('Failed to add item');
 
       setNewItem({ type: 'image', url: '', duration: 10, loop: false });
+      setSelectedDishes([]);
       setLayoutConfig({
         mode: 'fullscreen',
         top: 0,
@@ -199,15 +216,15 @@ export default function Admin() {
               <form onSubmit={handleAdd} className="space-y-5">
                 <div>
                   <label className="block text-sm font-bold text-zinc-700 mb-2">Media Type</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {['image', 'video', 'web', 'stream'].map((t) => (
+                  <div className="grid grid-cols-5 gap-2">
+                    {['image', 'video', 'web', 'stream', 'menu'].map((t) => (
                       <button
                         key={t} type="button"
                         onClick={() => {
                           setNewItem({...newItem, type: t as any});
-                          if (t === 'web' || t === 'stream') setSourceType('url');
+                          if (t === 'web' || t === 'stream' || t === 'menu') setSourceType('url');
                         }}
-                        className={`py-2 text-xs font-bold rounded-lg border transition-all uppercase ${
+                        className={`py-2 text-[10px] font-bold rounded-lg border transition-all uppercase ${
                           newItem.type === t ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400'
                         }`}
                       >
@@ -217,7 +234,7 @@ export default function Admin() {
                   </div>
                 </div>
 
-                {newItem.type !== 'web' && newItem.type !== 'stream' && (
+                {newItem.type !== 'web' && newItem.type !== 'stream' && newItem.type !== 'menu' && (
                   <div className="flex bg-zinc-100 p-1 rounded-xl">
                     <button 
                       type="button" onClick={() => setSourceType('url')}
@@ -247,6 +264,53 @@ export default function Admin() {
                         {file ? file.name : "Click to upload file"}
                       </span>
                     </label>
+                  </div>
+                ) : newItem.type === 'menu' ? (
+                  <div className="space-y-4">
+                    <select 
+                      value={newItem.url}
+                      onChange={(e) => {
+                        setNewItem({...newItem, url: e.target.value});
+                        setSelectedDishes([]);
+                      }}
+                      className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    >
+                      <option value="">Sélectionner un menu...</option>
+                      {menus.map(m => (
+                        <option key={m.id} value={m.id.toString()}>{m.name}</option>
+                      ))}
+                    </select>
+
+                    {newItem.url && (
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-bold text-zinc-400 uppercase">Sélectionner les plats à afficher</label>
+                        <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-xl p-2 space-y-1">
+                          {(() => {
+                            const menu = menus.find(m => m.id.toString() === newItem.url);
+                            if (!menu) return null;
+                            const content = typeof menu.content === 'string' ? JSON.parse(menu.content) : menu.content;
+                            const dishes = content.dishes || [];
+                            return dishes.map((dish: any) => (
+                              <label key={dish.id} className="flex items-center gap-2 p-2 hover:bg-zinc-50 rounded-lg cursor-pointer transition-colors">
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedDishes.includes(dish.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setSelectedDishes([...selectedDishes, dish.id]);
+                                    else setSelectedDishes(selectedDishes.filter(id => id !== dish.id));
+                                  }}
+                                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span className="text-xs font-medium text-zinc-700">{dish.name}</span>
+                              </label>
+                            ));
+                          })()}
+                        </div>
+                        <p className="text-[10px] text-zinc-400 italic">
+                          {selectedDishes.length} plat(s) sélectionné(s)
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div>
@@ -382,15 +446,20 @@ export default function Admin() {
 
                       <div className="flex-1 min-w-0">
                         <h3 className="text-sm font-bold text-zinc-900 truncate uppercase tracking-tight">
-                          {item.url.split('/').pop()}
+                          {item.type === 'menu' ? (menus.find(m => m.id.toString() === item.url)?.name || 'Menu') : item.url.split('/').pop()}
                         </h3>
                         <div className="flex items-center gap-3 mt-1">
-                          {item.type !== 'video' && item.type !== 'stream' && (
+                          {item.type !== 'video' && item.type !== 'stream' && item.type !== 'menu' && (
                             <span className="text-xs text-zinc-400 font-medium">{item.duration}s</span>
                           )}
                           {item.type === 'stream' && (
                             <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase">
                               <Radio className="w-2 h-2" /> Live Stream
+                            </span>
+                          )}
+                          {item.type === 'menu' && (
+                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase">
+                              <Utensils className="w-2 h-2" /> Menu
                             </span>
                           )}
                           {item.loop && (

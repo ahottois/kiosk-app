@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Monitor, Plus, Settings, Play, Trash2, RefreshCw, LayoutGrid, Server } from 'lucide-react';
+import { Monitor, Plus, Settings, Play, Trash2, RefreshCw, LayoutGrid, Server, Utensils } from 'lucide-react';
 
 interface Screen {
   screen_id: string;
@@ -98,6 +98,9 @@ export default function Dashboard() {
             <p className="text-zinc-500 font-medium italic">Tableau de bord de vos points d'affichage</p>
             <Link to="/installation" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 mt-2 uppercase tracking-wider">
               <Server className="w-3 h-3" /> Guide d'installation locale
+            </Link>
+            <Link to="/menus" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:text-emerald-700 mt-2 ml-4 uppercase tracking-wider">
+              <Utensils className="w-3 h-3" /> Gestion des Menus
             </Link>
           </div>
           

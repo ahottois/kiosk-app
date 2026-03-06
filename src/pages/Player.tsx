@@ -5,13 +5,102 @@ import 'video.js/dist/video-js.css';
 
 interface PlaylistItem {
   id: number;
-  type: 'image' | 'video' | 'web' | 'stream';
+  type: 'image' | 'video' | 'web' | 'stream' | 'menu';
   url: string;
   duration: number;
   order_index: number;
   loop?: boolean;
   layout_config?: string;
 }
+
+interface MenuData {
+  title: string;
+  content: {
+    dishes: {
+      id: string;
+      name: string;
+      ingredients: string;
+      image: string;
+    }[];
+  };
+}
+
+// Composant pour afficher un menu
+const MenuView = ({ menuId, layoutConfig }: { menuId: string, layoutConfig?: string }) => {
+  const [menu, setMenu] = useState<MenuData | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/menus/${menuId}`)
+      .then(res => res.json())
+      .then(data => {
+        const content = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+        setMenu({ ...data, content });
+      })
+      .catch(err => console.error('Failed to fetch menu', err));
+  }, [menuId]);
+
+  if (!menu) return <div className="flex items-center justify-center h-full text-white">Chargement du menu...</div>;
+
+  let dishesToDisplay = menu.content.dishes || [];
+  if (layoutConfig) {
+    try {
+      const config = JSON.parse(layoutConfig);
+      if (config.dishIds && config.dishIds.length > 0) {
+        dishesToDisplay = dishesToDisplay.filter(d => config.dishIds.includes(d.id));
+      }
+    } catch (e) {}
+  }
+
+  return (
+    <div className="h-full w-full bg-zinc-950 flex flex-col items-center overflow-hidden animate-fade-in relative">
+      {/* Background decoration */}
+      <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent"></div>
+      
+      <div className="z-10 w-full max-w-7xl px-12 py-16 flex flex-col h-full">
+        <div className="flex items-center justify-between mb-16 border-b border-white/10 pb-8">
+          <div>
+            <h1 className="text-7xl font-black text-white uppercase tracking-tighter italic leading-none">
+              {menu.title}
+            </h1>
+            <div className="h-2 w-32 bg-indigo-600 mt-4"></div>
+          </div>
+          <div className="text-right">
+            <span className="text-zinc-500 text-sm font-bold uppercase tracking-[0.3em]">Lalo's Selection</span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 overflow-y-auto pr-4 custom-scrollbar">
+          {dishesToDisplay.map((dish) => (
+            <div key={dish.id} className="bg-white/5 rounded-3xl border border-white/10 p-6 flex flex-col gap-6 hover:bg-white/10 transition-colors">
+              {dish.image && (
+                <div className="aspect-[16/10] rounded-2xl overflow-hidden border border-white/10">
+                  <img src={dish.image} className="w-full h-full object-cover" alt={dish.name} />
+                </div>
+              )}
+              <div className="space-y-3">
+                <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-tight">
+                  {dish.name}
+                </h2>
+                <p className="text-zinc-400 text-sm leading-relaxed font-medium italic">
+                  {dish.ingredients}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-auto pt-12 flex justify-between items-center text-zinc-600 text-[10px] font-bold uppercase tracking-[0.4em]">
+          <span>Freshly Prepared Daily</span>
+          <div className="flex gap-4">
+            <span>Organic</span>
+            <span>Local</span>
+            <span>Handmade</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface PlayerConfig {
   loop_playlist: boolean;
@@ -289,6 +378,16 @@ export default function Player() {
                 nextSlide();
               });
             }}
+          />
+        </div>
+      )}
+
+      {/* AFFICHAGE MENU */}
+      {currentItem.type === 'menu' && (
+        <div key={currentItem.id + '-' + currentIndex} className="absolute inset-0 w-full h-full">
+          <MenuView 
+            menuId={currentItem.url} 
+            layoutConfig={currentItem.layout_config} 
           />
         </div>
       )}
