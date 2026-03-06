@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
@@ -39,6 +39,24 @@ const MenuView = ({ menuId, layoutConfig }: { menuId: string, layoutConfig?: str
   const navRef = useRef<HTMLDivElement>(null);
   const cycleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const filteredCategories = useMemo(() => {
+    if (!menu) return [];
+    return (menu.content.categories || []).map(cat => {
+      if (layoutConfig) {
+        try {
+          const config = JSON.parse(layoutConfig);
+          if (config.dishIds && config.dishIds.length > 0) {
+            return {
+              ...cat,
+              dishes: cat.dishes.filter(d => config.dishIds.includes(d.id))
+            };
+          }
+        } catch (e) {}
+      }
+      return cat;
+    }).filter(cat => cat.dishes.length > 0);
+  }, [menu, layoutConfig]);
+
   useEffect(() => {
     fetch(`/api/menus/${menuId}`)
       .then(res => res.json())
@@ -61,16 +79,16 @@ const MenuView = ({ menuId, layoutConfig }: { menuId: string, layoutConfig?: str
 
   // Auto-cycle categories
   useEffect(() => {
-    if (!menu || menu.content.categories.length <= 1) return;
+    if (filteredCategories.length <= 1) return;
 
     cycleTimerRef.current = setInterval(() => {
-      setActiveCategoryIdx(prev => (prev + 1) % menu.content.categories.length);
+      setActiveCategoryIdx(prev => (prev + 1) % filteredCategories.length);
     }, 8000); // Cycle every 8 seconds
 
     return () => {
       if (cycleTimerRef.current) clearInterval(cycleTimerRef.current);
     };
-  }, [menu]);
+  }, [filteredCategories]);
 
   // Update highlight position
   useEffect(() => {
@@ -95,8 +113,7 @@ const MenuView = ({ menuId, layoutConfig }: { menuId: string, layoutConfig?: str
 
   if (!menu) return <div className="flex items-center justify-center h-full text-white">Chargement du menu...</div>;
 
-  const categories = menu.content.categories || [];
-  const activeCategory = categories[activeCategoryIdx];
+  const activeCategory = filteredCategories[activeCategoryIdx >= filteredCategories.length ? 0 : activeCategoryIdx];
   const accentColor = menu.accentColor || '#ffc600';
 
   return (
@@ -121,10 +138,10 @@ const MenuView = ({ menuId, layoutConfig }: { menuId: string, layoutConfig?: str
         </div>
 
         {/* Navigation */}
-        {categories.length > 1 && (
+        {filteredCategories.length > 1 && (
           <nav ref={navRef} className="flex justify-center flex-wrap mb-12 relative gap-3">
             <div style={highlightStyle}></div>
-            {categories.map((cat, idx) => (
+            {filteredCategories.map((cat, idx) => (
               <button
                 key={cat.id}
                 className="menu-button px-5 py-2.5 border rounded-sm text-white font-bold uppercase tracking-widest text-xs transition-colors relative z-10"

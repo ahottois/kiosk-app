@@ -291,7 +291,10 @@ export default function Admin() {
                             const menu = menus.find(m => m.id.toString() === newItem.url);
                             if (!menu) return null;
                             const content = typeof menu.content === 'string' ? JSON.parse(menu.content) : menu.content;
-                            const dishes = content.dishes || [];
+                            let dishes = content.dishes || [];
+                            if (content.categories) {
+                              dishes = content.categories.flatMap((cat: any) => cat.dishes || []);
+                            }
                             return dishes.map((dish: any) => (
                               <label key={dish.id} className="flex items-center gap-2 p-2 hover:bg-zinc-50 rounded-lg cursor-pointer transition-colors">
                                 <input 
