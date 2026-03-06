@@ -15,12 +15,18 @@ interface PlaylistItem {
 
 interface MenuData {
   title: string;
+  background?: string;
+  accentColor?: string;
   content: {
-    dishes: {
+    categories: {
       id: string;
       name: string;
-      ingredients: string[];
-      image: string;
+      dishes: {
+        id: string;
+        name: string;
+        ingredients: string[];
+        image: string;
+      }[];
     }[];
   };
 }
@@ -28,73 +34,135 @@ interface MenuData {
 // Composant pour afficher un menu
 const MenuView = ({ menuId, layoutConfig }: { menuId: string, layoutConfig?: string }) => {
   const [menu, setMenu] = useState<MenuData | null>(null);
+  const [activeCategoryIdx, setActiveCategoryIdx] = useState(0);
+  const [highlightStyle, setHighlightStyle] = useState<React.CSSProperties>({});
+  const navRef = useRef<HTMLDivElement>(null);
+  const cycleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetch(`/api/menus/${menuId}`)
       .then(res => res.json())
       .then(data => {
         const content = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+        
+        // Migration to categories if needed
+        if (content.dishes && !content.categories) {
+          content.categories = [{
+            id: 'default',
+            name: 'Plats',
+            dishes: content.dishes
+          }];
+        }
+        
         setMenu({ ...data, content });
       })
       .catch(err => console.error('Failed to fetch menu', err));
   }, [menuId]);
 
+  // Auto-cycle categories
+  useEffect(() => {
+    if (!menu || menu.content.categories.length <= 1) return;
+
+    cycleTimerRef.current = setInterval(() => {
+      setActiveCategoryIdx(prev => (prev + 1) % menu.content.categories.length);
+    }, 8000); // Cycle every 8 seconds
+
+    return () => {
+      if (cycleTimerRef.current) clearInterval(cycleTimerRef.current);
+    };
+  }, [menu]);
+
+  // Update highlight position
+  useEffect(() => {
+    if (!navRef.current) return;
+    const buttons = navRef.current.querySelectorAll('.menu-button');
+    const activeButton = buttons[activeCategoryIdx] as HTMLElement;
+    if (activeButton) {
+      setHighlightStyle({
+        width: `${activeButton.offsetWidth}px`,
+        height: `${activeButton.offsetHeight}px`,
+        left: `${activeButton.offsetLeft}px`,
+        top: `${activeButton.offsetTop}px`,
+        position: 'absolute',
+        borderRadius: '3px',
+        zIndex: 0,
+        transition: 'all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.15)',
+        pointerEvents: 'none',
+        backgroundColor: menu?.accentColor || '#ffc600'
+      });
+    }
+  }, [activeCategoryIdx, menu]);
+
   if (!menu) return <div className="flex items-center justify-center h-full text-white">Chargement du menu...</div>;
 
-  let dishesToDisplay = menu.content.dishes || [];
-  if (layoutConfig) {
-    try {
-      const config = JSON.parse(layoutConfig);
-      if (config.dishIds && config.dishIds.length > 0) {
-        dishesToDisplay = dishesToDisplay.filter(d => config.dishIds.includes(d.id));
-      }
-    } catch (e) {}
-  }
+  const categories = menu.content.categories || [];
+  const activeCategory = categories[activeCategoryIdx];
+  const accentColor = menu.accentColor || '#ffc600';
 
   return (
-    <div className="h-full w-full bg-zinc-950 flex flex-col items-center overflow-hidden animate-fade-in relative">
-      {/* Background decoration */}
-      <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent"></div>
-      
-      <div className="z-10 w-full max-w-7xl px-12 py-16 flex flex-col h-full">
-        <div className="flex items-center justify-between mb-16 border-b border-white/10 pb-8">
-          <div>
-            <h1 className="text-7xl font-black text-white uppercase tracking-tighter italic leading-none">
-              {menu.title}
-            </h1>
-            <div className="h-2 w-32 bg-indigo-600 mt-4"></div>
-          </div>
-          <div className="text-right">
-            <span className="text-zinc-500 text-sm font-bold uppercase tracking-[0.3em]">Lalo's Selection</span>
-          </div>
+    <div 
+      className="h-full w-full flex flex-col items-center overflow-hidden animate-fade-in relative"
+      style={{
+        background: `linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url(${menu.background || "https://i.imgur.com/er8DtBW.jpg"}) center/cover no-repeat fixed`,
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}
+    >
+      <div className="w-full max-w-5xl px-8 py-16 flex flex-col h-full">
+        <div className="mb-4">
+          <h2 
+            className="inline-block border-b-4 leading-none mb-4"
+            style={{ 
+              borderColor: accentColor,
+              font: "50px 'Cookie', cursive"
+            }}
+          >
+            {menu.title}
+          </h2>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 overflow-y-auto pr-4 custom-scrollbar">
-          {dishesToDisplay.map((dish) => (
-            <div key={dish.id} className="bg-white/5 rounded-3xl border border-white/10 p-6 flex flex-col gap-6 hover:bg-white/10 transition-colors">
-              {dish.image && (
-                <div className="aspect-[16/10] rounded-2xl overflow-hidden border border-white/10">
-                  <img src={dish.image} className="w-full h-full object-cover" alt={dish.name} />
-                </div>
-              )}
-              <div className="space-y-3">
-                <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-tight">
+
+        {/* Navigation */}
+        {categories.length > 1 && (
+          <nav ref={navRef} className="flex justify-center flex-wrap mb-12 relative gap-3">
+            <div style={highlightStyle}></div>
+            {categories.map((cat, idx) => (
+              <button
+                key={cat.id}
+                className="menu-button px-5 py-2.5 border rounded-sm text-white font-bold uppercase tracking-widest text-xs transition-colors relative z-10"
+                style={{ borderColor: accentColor }}
+                onClick={() => setActiveCategoryIdx(idx)}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {/* Menu Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-20 gap-y-10 overflow-y-auto pr-4 custom-scrollbar">
+          {activeCategory?.dishes.map((dish) => (
+            <div key={dish.id} className="flex flex-col animate-fade-in">
+              <div className="flex items-baseline gap-4">
+                <h3 
+                  className="text-4xl leading-none m-0 whitespace-nowrap"
+                  style={{ color: accentColor, font: "35px 'Cookie', cursive" }}
+                >
                   {dish.name}
-                </h2>
-                <p className="text-zinc-400 text-sm leading-relaxed font-medium italic">
-                  {Array.isArray(dish.ingredients) ? dish.ingredients.join(', ') : dish.ingredients}
-                </p>
+                </h3>
+                <div className="flex-1 border-b border-white/20 border-dotted mb-1"></div>
               </div>
+              <p className="mt-2 text-sm leading-relaxed opacity-90 font-medium">
+                {Array.isArray(dish.ingredients) ? dish.ingredients.join(', ') : dish.ingredients}
+              </p>
             </div>
           ))}
         </div>
 
-        <div className="mt-auto pt-12 flex justify-between items-center text-zinc-600 text-[10px] font-bold uppercase tracking-[0.4em]">
-          <span>Freshly Prepared Daily</span>
+        <div className="mt-auto pt-12 flex justify-between items-center text-white/40 text-[10px] font-bold uppercase tracking-[0.4em]">
+          <span>Lalo's Kiosk Digital Signage</span>
           <div className="flex gap-4">
-            <span>Organic</span>
+            <span>Fresh</span>
             <span>Local</span>
-            <span>Handmade</span>
+            <span>Daily</span>
           </div>
         </div>
       </div>

@@ -183,6 +183,32 @@ app.post('/api/ingredients', (req, res) => {
   }
 });
 
+// --- ROUTES API BACKGROUNDS ---
+
+app.get('/api/backgrounds', (req, res) => {
+  const bgDir = path.join(process.cwd(), 'uploads', 'backgrounds');
+  if (!fs.existsSync(bgDir)) {
+    fs.mkdirSync(bgDir, { recursive: true });
+  }
+  const files = fs.readdirSync(bgDir);
+  res.json(files.map(f => `/uploads/backgrounds/${f}`));
+});
+
+app.post('/api/backgrounds', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  
+  const bgDir = path.join(process.cwd(), 'uploads', 'backgrounds');
+  if (!fs.existsSync(bgDir)) {
+    fs.mkdirSync(bgDir, { recursive: true });
+  }
+  
+  const fileName = `${Date.now()}-${req.file.originalname}`;
+  const targetPath = path.join(bgDir, fileName);
+  fs.renameSync(req.file.path, targetPath);
+  
+  res.json({ url: `/uploads/backgrounds/${fileName}` });
+});
+
 // --- ROUTES API MENUS ---
 
 app.get('/api/menus', (req, res) => {
