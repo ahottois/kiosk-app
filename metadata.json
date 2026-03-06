@@ -1,0 +1,5 @@
+{
+  "name": "Digital Signage Player",
+  "description": "A digital signage application capable of looping and switching instantly between videos, images, and websites. Features an admin dashboard and a real-time player.",
+  "requestFramePermissions": []
+}
