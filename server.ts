@@ -147,7 +147,7 @@ if (count.count === 0) {
     'Huile de sésame', 'Huile de noix', 'Huile de noisette', 'Huile d\'avocat', 'Huile de pépins de raisin', 'Huile de colza', 'Huile de coco', 'Huile de lin', 'Huile de truffe', 'Huile de piment',
     'Vinaigre balsamique', 'Vinaigre de cidre', 'Vinaigre de vin rouge', 'Vinaigre de vin blanc', 'Vinaigre de riz', 'Vinaigre de framboise', 'Vinaigre de xérès', 'Vinaigre d\'alcool', 'Vinaigre de malt', 'Vinaigre de miel'
   ];
-  const insert = db.prepare('INSERT INTO ingredients (name) VALUES (?)');
+  const insert = db.prepare('INSERT OR IGNORE INTO ingredients (name) VALUES (?)');
   const transaction = db.transaction((items) => {
     for (const item of items) insert.run(item);
   });

@@ -5,6 +5,7 @@ import {
   Link as LinkIcon, Upload, Radio, Utensils
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import { playEasterEgg } from '../services/easterEgg';
 
 interface PlaylistItem {
   id: number;
@@ -136,7 +137,8 @@ export default function Admin() {
       setSourceType('url');
       fetchPlaylist();
     } catch (err: any) {
-      alert(err.message);
+      console.error(err.message);
+      playEasterEgg();
     }
   };
 

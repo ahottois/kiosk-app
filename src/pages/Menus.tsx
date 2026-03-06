@@ -4,6 +4,7 @@ import {
   ChevronLeft, Plus, Trash2, Save, Utensils, 
   ListOrdered, Edit3, Image as ImageIcon, Upload, Search, X
 } from 'lucide-react';
+import { playEasterEgg } from '../services/easterEgg';
 
 interface MenuItem {
   id: string;
@@ -101,15 +102,20 @@ export default function Menus() {
     try {
       const method = editingMenu.id ? 'PUT' : 'POST';
       const url = editingMenu.id ? `/api/menus/${editingMenu.id}` : '/api/menus';
-      await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingMenu),
       });
-      setEditingMenu(null);
-      fetchMenus();
+      if (res.ok) {
+        setEditingMenu(null);
+        fetchMenus();
+      } else {
+        playEasterEgg();
+      }
     } catch (err) {
       console.error('Failed to save menu', err);
+      playEasterEgg();
     }
   };
 
