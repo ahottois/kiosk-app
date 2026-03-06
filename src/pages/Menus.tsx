@@ -263,12 +263,9 @@ export default function Menus() {
     setUploading(dishId);
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('type', 'image');
-    formData.append('duration', '0');
-    formData.append('screen_id', 'temp');
 
     try {
-      const res = await fetch('/api/playlist', {
+      const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });

@@ -209,6 +209,12 @@ app.post('/api/backgrounds', upload.single('file'), (req, res) => {
   res.json({ url: `/uploads/backgrounds/${fileName}` });
 });
 
+// Endpoint générique pour l'upload d'images (sans ajout à la playlist)
+app.post('/api/upload', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  res.json({ url: `/uploads/${req.file.filename}` });
+});
+
 // --- ROUTES API MENUS ---
 
 app.get('/api/menus', (req, res) => {
