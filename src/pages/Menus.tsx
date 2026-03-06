@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ChevronLeft, Plus, Trash2, Save, Utensils, 
-  ListOrdered, Edit3, Image as ImageIcon, Upload, Link as LinkIcon
+  ListOrdered, Edit3, Image as ImageIcon, Upload, Search, X
 } from 'lucide-react';
 
 interface MenuItem {
   id: string;
   name: string;
-  ingredients: string;
+  ingredients: string[]; // Changed to array of strings (names)
   image: string;
 }
 
@@ -21,32 +21,35 @@ interface Menu {
   };
 }
 
+interface Ingredient {
+  id: number;
+  name: string;
+}
+
 export default function Menus() {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState<string | null>(null); // itemId being uploaded
+  const [uploading, setUploading] = useState<string | null>(null);
+  
+  // Ingredient search states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Ingredient[]>([]);
+  const [activeDishId, setActiveDishId] = useState<string | null>(null);
+  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const fetchMenus = async () => {
     try {
       const res = await fetch('/api/menus');
       const data = await res.json();
-      // Migration: if old format (categories), convert to dishes
       const migratedData = data.map((m: any) => {
         const content = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
-        if (content.categories) {
-          const dishes: MenuItem[] = [];
-          content.categories.forEach((cat: any) => {
-            cat.items.forEach((item: any) => {
-              dishes.push({
-                id: item.id,
-                name: item.name,
-                ingredients: '',
-                image: ''
-              });
-            });
-          });
-          return { ...m, content: { dishes } };
+        // Migration to new ingredients array format if needed
+        if (content.dishes) {
+          content.dishes = content.dishes.map((d: any) => ({
+            ...d,
+            ingredients: Array.isArray(d.ingredients) ? d.ingredients : (d.ingredients ? d.ingredients.split(',').map((s: string) => s.trim()) : [])
+          }));
         }
         return { ...m, content };
       });
@@ -62,13 +65,32 @@ export default function Menus() {
     fetchMenus();
   }, []);
 
+  // Search ingredients
+  useEffect(() => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    
+    if (searchQuery.length > 0) {
+      searchTimeout.current = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/ingredients?q=${encodeURIComponent(searchQuery)}`);
+          const data = await res.json();
+          setSearchResults(data);
+        } catch (err) {
+          console.error('Search failed', err);
+        }
+      }, 300);
+    } else {
+      setSearchResults([]);
+    }
+  }, [searchQuery]);
+
   const handleCreateNew = () => {
     setEditingMenu({
       name: 'Nouveau Menu',
       title: 'Menu du Jour',
       content: {
         dishes: [
-          { id: Date.now().toString(), name: 'Nouveau Plat', ingredients: '', image: '' }
+          { id: Date.now().toString(), name: 'Nouveau Plat', ingredients: [], image: '' }
         ]
       }
     });
@@ -76,21 +98,16 @@ export default function Menus() {
 
   const handleSave = async () => {
     if (!editingMenu) return;
-
     try {
       const method = editingMenu.id ? 'PUT' : 'POST';
       const url = editingMenu.id ? `/api/menus/${editingMenu.id}` : '/api/menus';
-      
-      const res = await fetch(url, {
+      await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingMenu),
       });
-
-      if (res.ok) {
-        setEditingMenu(null);
-        fetchMenus();
-      }
+      setEditingMenu(null);
+      fetchMenus();
     } catch (err) {
       console.error('Failed to save menu', err);
     }
@@ -104,7 +121,7 @@ export default function Menus() {
 
   const addDish = () => {
     if (!editingMenu) return;
-    const newDishes = [...editingMenu.content.dishes, { id: Date.now().toString(), name: 'Nouveau Plat', ingredients: '', image: '' }];
+    const newDishes = [...editingMenu.content.dishes, { id: Date.now().toString(), name: 'Nouveau Plat', ingredients: [], image: '' }];
     setEditingMenu({ ...editingMenu, content: { dishes: newDishes } });
   };
 
@@ -114,7 +131,7 @@ export default function Menus() {
     setEditingMenu({ ...editingMenu, content: { dishes: newDishes } });
   };
 
-  const updateDish = (dishId: string, field: keyof MenuItem, value: string) => {
+  const updateDish = (dishId: string, field: keyof MenuItem, value: any) => {
     if (!editingMenu) return;
     const newDishes = editingMenu.content.dishes.map(dish => {
       if (dish.id === dishId) return { ...dish, [field]: value };
@@ -123,13 +140,44 @@ export default function Menus() {
     setEditingMenu({ ...editingMenu, content: { dishes: newDishes } });
   };
 
+  const addIngredientToDish = async (dishId: string, ingredientName: string) => {
+    if (!editingMenu) return;
+    const dish = editingMenu.content.dishes.find(d => d.id === dishId);
+    if (!dish) return;
+    
+    if (dish.ingredients.includes(ingredientName)) return;
+
+    const newIngredients = [...dish.ingredients, ingredientName];
+    updateDish(dishId, 'ingredients', newIngredients);
+    setSearchQuery('');
+    setSearchResults([]);
+    setActiveDishId(null);
+
+    // Also ensure it exists in DB
+    try {
+      await fetch('/api/ingredients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: ingredientName }),
+      });
+    } catch (err) {}
+  };
+
+  const removeIngredientFromDish = (dishId: string, ingredientName: string) => {
+    if (!editingMenu) return;
+    const dish = editingMenu.content.dishes.find(d => d.id === dishId);
+    if (!dish) return;
+    const newIngredients = dish.ingredients.filter(i => i !== ingredientName);
+    updateDish(dishId, 'ingredients', newIngredients);
+  };
+
   const handleImageUpload = async (dishId: string, file: File) => {
     setUploading(dishId);
     const formData = new FormData();
     formData.append('file', file);
     formData.append('type', 'image');
     formData.append('duration', '0');
-    formData.append('screen_id', 'temp'); // Dummy screen_id for upload
+    formData.append('screen_id', 'temp');
 
     try {
       const res = await fetch('/api/playlist', {
@@ -137,9 +185,7 @@ export default function Menus() {
         body: formData,
       });
       const data = await res.json();
-      if (data.url) {
-        updateDish(dishId, 'image', data.url);
-      }
+      if (data.url) updateDish(dishId, 'image', data.url);
     } catch (err) {
       console.error('Upload failed', err);
     } finally {
@@ -260,15 +306,58 @@ export default function Menus() {
                           className="w-full border-b border-zinc-100 py-2 text-lg font-bold text-zinc-800 outline-none focus:border-indigo-500 transition-colors"
                         />
                       </div>
+                      
                       <div>
-                        <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Ingrédients / Description</label>
-                        <textarea 
-                          value={dish.ingredients}
-                          onChange={(e) => updateDish(dish.id, 'ingredients', e.target.value)}
-                          placeholder="Ex: Pain brioché, steak haché 150g, cheddar affiné, oignons caramélisés..."
-                          rows={2}
-                          className="w-full border border-zinc-100 rounded-xl px-4 py-3 text-sm text-zinc-600 outline-none focus:border-indigo-500 transition-colors resize-none"
-                        />
+                        <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-2">Ingrédients</label>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {dish.ingredients.map((ing) => (
+                            <span key={ing} className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-100">
+                              {ing}
+                              <button onClick={() => removeIngredientFromDish(dish.id, ing)} className="hover:text-indigo-900">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        
+                        <div className="relative">
+                          <div className="flex items-center gap-2 bg-zinc-50 rounded-xl px-4 py-2 border border-zinc-100 focus-within:border-indigo-300 transition-colors">
+                            <Search className="w-4 h-4 text-zinc-400" />
+                            <input 
+                              type="text" 
+                              placeholder="Rechercher ou ajouter un ingrédient..."
+                              value={activeDishId === dish.id ? searchQuery : ''}
+                              onChange={(e) => {
+                                setActiveDishId(dish.id);
+                                setSearchQuery(e.target.value);
+                              }}
+                              onFocus={() => setActiveDishId(dish.id)}
+                              className="flex-1 bg-transparent text-sm outline-none"
+                            />
+                          </div>
+                          
+                          {activeDishId === dish.id && searchQuery.length > 0 && (
+                            <div className="absolute z-20 top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-zinc-100 overflow-hidden max-h-60 overflow-y-auto">
+                              {searchResults.map((res) => (
+                                <button 
+                                  key={res.id}
+                                  onClick={() => addIngredientToDish(dish.id, res.name)}
+                                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0"
+                                >
+                                  {res.name}
+                                </button>
+                              ))}
+                              {!searchResults.some(r => r.name.toLowerCase() === searchQuery.toLowerCase()) && (
+                                <button 
+                                  onClick={() => addIngredientToDish(dish.id, searchQuery)}
+                                  className="w-full text-left px-4 py-2.5 text-sm bg-indigo-50 text-indigo-600 font-bold hover:bg-indigo-100 transition-colors"
+                                >
+                                  + Créer "{searchQuery}"
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -323,24 +412,14 @@ export default function Menus() {
                       onClick={async () => {
                         const res = await fetch(`/api/menus/${menu.id}`);
                         const data = await res.json();
-                        // Migration on edit too
                         const content = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
-                        if (content.categories) {
-                          const dishes: MenuItem[] = [];
-                          content.categories.forEach((cat: any) => {
-                            cat.items.forEach((item: any) => {
-                              dishes.push({
-                                id: item.id,
-                                name: item.name,
-                                ingredients: '',
-                                image: ''
-                              });
-                            });
-                          });
-                          setEditingMenu({ ...data, content: { dishes } });
-                        } else {
-                          setEditingMenu({ ...data, content });
+                        if (content.dishes) {
+                          content.dishes = content.dishes.map((d: any) => ({
+                            ...d,
+                            ingredients: Array.isArray(d.ingredients) ? d.ingredients : (d.ingredients ? d.ingredients.split(',').map((s: string) => s.trim()) : [])
+                          }));
                         }
+                        setEditingMenu({ ...data, content });
                       }}
                       className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-400 hover:text-indigo-600"
                     >

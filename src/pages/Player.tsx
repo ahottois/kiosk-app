@@ -19,7 +19,7 @@ interface MenuData {
     dishes: {
       id: string;
       name: string;
-      ingredients: string;
+      ingredients: string[];
       image: string;
     }[];
   };
@@ -82,7 +82,7 @@ const MenuView = ({ menuId, layoutConfig }: { menuId: string, layoutConfig?: str
                   {dish.name}
                 </h2>
                 <p className="text-zinc-400 text-sm leading-relaxed font-medium italic">
-                  {dish.ingredients}
+                  {Array.isArray(dish.ingredients) ? dish.ingredients.join(', ') : dish.ingredients}
                 </p>
               </div>
             </div>

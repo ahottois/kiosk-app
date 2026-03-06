@@ -101,6 +101,88 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } 
 });
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ingredients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+  )
+`);
+
+// Populate ingredients if empty
+const count = db.prepare('SELECT COUNT(*) as count FROM ingredients').get() as { count: number };
+if (count.count === 0) {
+  const commonIngredients = [
+    'Ail', 'Oignon', 'Échalote', 'Persil', 'Ciboulette', 'Basilic', 'Coriandre', 'Thym', 'Romarin', 'Laurier',
+    'Sel', 'Poivre', 'Sucre', 'Farine', 'Beurre', 'Huile d\'olive', 'Huile de tournesol', 'Vinaigre', 'Moutarde', 'Mayonnaise',
+    'Œuf', 'Lait', 'Crème fraîche', 'Yaourt', 'Fromage', 'Emmental', 'Parmesan', 'Mozzarella', 'Chèvre', 'Camembert',
+    'Pomme de terre', 'Carotte', 'Courgette', 'Aubergine', 'Poivron', 'Tomate', 'Haricot vert', 'Petit pois', 'Épinard', 'Salade',
+    'Champignon', 'Poireau', 'Chou-fleur', 'Brocoli', 'Asperge', 'Artichaut', 'Céleri', 'Radis', 'Concombre', 'Betterave',
+    'Poulet', 'Bœuf', 'Porc', 'Agneau', 'Veau', 'Canard', 'Dinde', 'Lardon', 'Jambon', 'Saucisse',
+    'Saumon', 'Thon', 'Cabillaud', 'Crevette', 'Moule', 'Huître', 'Saint-Jacques', 'Sardine', 'Truite', 'Colin',
+    'Pomme', 'Poire', 'Banane', 'Orange', 'Citron', 'Fraise', 'Framboise', 'Cerise', 'Abricot', 'Pêche',
+    'Riz', 'Pâtes', 'Semoule', 'Quinoa', 'Lentille', 'Pois chiche', 'Haricot rouge', 'Boulgour', 'Maïs', 'Pain',
+    'Chocolat', 'Miel', 'Confiture', 'Vanille', 'Cannelle', 'Gingembre', 'Curry', 'Paprika', 'Cumin', 'Noix de muscade',
+    'Amande', 'Noisette', 'Noix', 'Pistache', 'Pignon de pin', 'Sésame', 'Graine de courge', 'Graine de tournesol', 'Chia', 'Lin',
+    'Vin blanc', 'Vin rouge', 'Bière', 'Cidre', 'Rhum', 'Cognac', 'Liqueur', 'Café', 'Thé', 'Infusion',
+    'Bouillon de bœuf', 'Bouillon de volaille', 'Bouillon de légumes', 'Fond de veau', 'Sauce soja', 'Sauce tomate', 'Pesto', 'Tapenade', 'Houmous', 'Guacamole',
+    'Aneth', 'Cerfeuil', 'Estragon', 'Menthe', 'Sauge', 'Origan', 'Piment', 'Safran', 'Curcuma', 'Cardamome',
+    'Ananas', 'Mangue', 'Kiwi', 'Melon', 'Pastèque', 'Raisin', 'Prune', 'Figue', 'Datte', 'Noix de coco',
+    'Lotte', 'Bar', 'Dorade', 'Sole', 'Turbot', 'Raie', 'Gambas', 'Langoustine', 'Crabe', 'Homard',
+    'Bacon', 'Chorizo', 'Salami', 'Pancetta', 'Coppa', 'Mortadelle', 'Foie gras', 'Magret', 'Gésier', 'Rillettes',
+    'Roquefort', 'Brie', 'Comté', 'Beaufort', 'Reblochon', 'Maroilles', 'Munster', 'Gorgonzola', 'Feta', 'Ricotta',
+    'Chou rouge', 'Chou vert', 'Chou de Bruxelles', 'Chou frisé', 'Endive', 'Fenouil', 'Navet', 'Panais', 'Topinambour', 'Patate douce',
+    'Lentille corail', 'Pois cassé', 'Fève', 'Soja', 'Tofu', 'Seitan', 'Tempeh', 'Lait d\'amande', 'Lait de soja', 'Lait de coco',
+    'Sirop d\'érable', 'Sirop d\'agave', 'Cassonade', 'Sucre glace', 'Levure chimique', 'Levure de boulanger', 'Bicarbonate', 'Fécule de maïs', 'Gélatine', 'Agar-agar',
+    'Câpre', 'Cornichon', 'Olive verte', 'Olive noire', 'Anchois', 'Truffe', 'Morille', 'Cèpe', 'Girolle', 'Pleurote',
+    'Noix de pécan', 'Noix de cajou', 'Noix du Brésil', 'Macadamia', 'Cranberry', 'Baie de goji', 'Myrtille', 'Mûre', 'Groseille', 'Cassis',
+    'Ketchup', 'Harissa', 'Wasabi', 'Tahini', 'Miso', 'Nuoc-mâm', 'Worcestershire', 'Tabasco', 'Sriracha', 'Barbecue',
+    'Mascarpone', 'Faisselle', 'St Moret', 'Philadelphia', 'Vache qui rit', 'Kiri', 'Babybel', 'Cheddar', 'Gouda', 'Mimolette',
+    'Radis noir', 'Céleri-rave', 'Rutabaga', 'Crosne', 'Salsifis', 'Blette', 'Cardon', 'Ortie', 'Pissenlit', 'Pourpier',
+    'Caille', 'Perdreau', 'Faisan', 'Lièvre', 'Sanglier', 'Chevreuil', 'Biche', 'Cerf', 'Kangourou', 'Autruche',
+    'Grenouille', 'Escargot', 'Poulpe', 'Calamar', 'Seiche', 'Encornet', 'Oursin', 'Palourde', 'Coque', 'Couteau',
+    'Wasabi', 'Yuzu', 'Kombu', 'Wakame', 'Nori', 'Shiitake', 'Enoki', 'Shimeji', 'Daikon', 'Edamame',
+    'Graine de pavot', 'Graine de nigelle', 'Graine de fenouil', 'Graine de coriandre', 'Graine de cumin', 'Graine de moutarde', 'Graine de carvi', 'Graine d\'anis', 'Graine de cardamome', 'Graine de céleri',
+    'Piment d\'Espelette', 'Piment oiseau', 'Piment de Cayenne', 'Piment jalapeño', 'Piment habanero', 'Piment chipotle', 'Poivre de Sichuan', 'Poivre rose', 'Poivre blanc', 'Poivre vert',
+    'Fleur de sel', 'Sel de Guérande', 'Sel rose de l\'Himalaya', 'Sel noir d\'Hawaï', 'Sel fumé', 'Sel de céleri', 'Sel de truffe', 'Gros sel', 'Sel fin', 'Sel de mer',
+    'Huile de sésame', 'Huile de noix', 'Huile de noisette', 'Huile d\'avocat', 'Huile de pépins de raisin', 'Huile de colza', 'Huile de coco', 'Huile de lin', 'Huile de truffe', 'Huile de piment',
+    'Vinaigre balsamique', 'Vinaigre de cidre', 'Vinaigre de vin rouge', 'Vinaigre de vin blanc', 'Vinaigre de riz', 'Vinaigre de framboise', 'Vinaigre de xérès', 'Vinaigre d\'alcool', 'Vinaigre de malt', 'Vinaigre de miel'
+  ];
+  const insert = db.prepare('INSERT INTO ingredients (name) VALUES (?)');
+  const transaction = db.transaction((items) => {
+    for (const item of items) insert.run(item);
+  });
+  transaction(commonIngredients);
+}
+
+// --- ROUTES API INGREDIENTS ---
+
+app.get('/api/ingredients', (req, res) => {
+  try {
+    const q = req.query.q as string;
+    let ingredients;
+    if (q) {
+      ingredients = db.prepare('SELECT * FROM ingredients WHERE name LIKE ? LIMIT 20').all(`%${q}%`);
+    } else {
+      ingredients = db.prepare('SELECT * FROM ingredients ORDER BY name ASC LIMIT 50').all();
+    }
+    res.json(ingredients);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ingredients', (req, res) => {
+  try {
+    const { name } = req.body;
+    const stmt = db.prepare('INSERT OR IGNORE INTO ingredients (name) VALUES (?)');
+    const info = stmt.run(name);
+    const id = info.changes > 0 ? info.lastInsertRowid : (db.prepare('SELECT id FROM ingredients WHERE name = ?').get(name) as any).id;
+    res.json({ id, name });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- ROUTES API MENUS ---
 
 app.get('/api/menus', (req, res) => {
