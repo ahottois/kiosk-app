@@ -1,8 +1,13 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 export async function playEasterEgg() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn('GEMINI_API_KEY is not set, skipping easter egg.');
+    return;
+  }
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: 'Say in a very sexy, breathy female voice: Happy birthday mister president. Then say normally: Désolé, une petite erreur est survenue. Pourrais-tu réessayer gentiment ?' }] }],

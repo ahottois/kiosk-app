@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Monitor, Plus, Settings, Play, Trash2, RefreshCw, LayoutGrid, Server, Utensils } from 'lucide-react';
+import { Monitor, Plus, Settings, Play, Trash2, RefreshCw, LayoutGrid, Server, Utensils, CheckSquare } from 'lucide-react';
 
 interface Screen {
   screen_id: string;
@@ -101,6 +101,9 @@ export default function Dashboard() {
             </Link>
             <Link to="/menus" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:text-emerald-700 mt-2 ml-4 uppercase tracking-wider">
               <Utensils className="w-3 h-3" /> Gestion des Menus
+            </Link>
+            <Link to="/tasks" className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 hover:text-amber-700 mt-2 ml-4 uppercase tracking-wider">
+              <CheckSquare className="w-3 h-3" /> Gestion des Tâches
             </Link>
           </div>
           

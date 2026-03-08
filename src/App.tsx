@@ -4,6 +4,7 @@ import Admin from './pages/Admin';
 import Player from './pages/Player';
 import Installation from './pages/Installation';
 import Menus from './pages/Menus';
+import Tasks from './pages/Tasks';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/player" element={<Player />} />
         <Route path="/installation" element={<Installation />} />
         <Route path="/menus" element={<Menus />} />
+        <Route path="/tasks" element={<Tasks />} />
       </Routes>
     </BrowserRouter>
   );

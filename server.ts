@@ -67,6 +67,20 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    reward REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    assigned_to TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    finished_at DATETIME,
+    approved_at DATETIME
+  )
+`);
+
 // --- MIGRATION : AJOUT DES COLONNES SI ELLES N'EXISTENT PAS ---
 // Cela évite les erreurs 500 sur les anciennes bases de données
 try {
@@ -267,6 +281,59 @@ app.delete('/api/menus/:id', (req, res) => {
   }
 });
 
+// --- ROUTES API TÂCHES ---
+
+app.get('/api/tasks', (req, res) => {
+  try {
+    const tasks = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all();
+    res.json(tasks);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/tasks', (req, res) => {
+  try {
+    const { title, description, reward, assigned_to } = req.body;
+    const stmt = db.prepare('INSERT INTO tasks (title, description, reward, assigned_to) VALUES (?, ?, ?, ?)');
+    const info = stmt.run(title, description, reward || 0, assigned_to);
+    res.json({ id: info.lastInsertRowid });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/tasks/:id/status', (req, res) => {
+  try {
+    const { status } = req.body;
+    let query = 'UPDATE tasks SET status = ?';
+    const params: any[] = [status];
+
+    if (status === 'finished') {
+      query += ', finished_at = CURRENT_TIMESTAMP';
+    } else if (status === 'approved') {
+      query += ', approved_at = CURRENT_TIMESTAMP';
+    }
+
+    query += ' WHERE id = ?';
+    params.push(req.params.id);
+
+    db.prepare(query).run(...params);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- ROUTES API ---
 
 // Récupérer les écrans et le nombre de médias
@@ -345,6 +412,10 @@ app.post('/api/playlist', upload.single('file'), (req, res) => {
   try {
     const { type, url, duration, screen_id, loop, layout_config } = req.body;
     const sid = screen_id || 'default';
+    
+    // S'assurer que l'écran existe (pour la contrainte de clé étrangère)
+    db.prepare("INSERT OR IGNORE INTO screens (id) VALUES (?)").run(sid);
+    
     const finalUrl = req.file ? `/uploads/${req.file.filename}` : url;
     
     const stmt = db.prepare('INSERT INTO playlist (type, url, duration, screen_id, loop, layout_config) VALUES (?, ?, ?, ?, ?, ?)');
@@ -353,6 +424,7 @@ app.post('/api/playlist', upload.single('file'), (req, res) => {
     io.to(sid).emit('playlist_updated');
     res.json({ id: info.lastInsertRowid, url: finalUrl });
   } catch (err: any) {
+    console.error('Error adding to playlist:', err);
     res.status(500).json({ error: err.message });
   }
 });

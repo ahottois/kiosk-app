@@ -9,7 +9,7 @@ import { playEasterEgg } from '../services/easterEgg';
 
 interface PlaylistItem {
   id: number;
-  type: 'image' | 'video' | 'web' | 'stream' | 'menu';
+  type: 'image' | 'video' | 'web' | 'stream' | 'menu' | 'tasks';
   url: string;
   duration: number;
   order_index: number;
@@ -29,11 +29,13 @@ export default function Admin() {
   
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [menus, setMenus] = useState<Menu[]>([]);
+  const [children, setChildren] = useState<string[]>([]);
+  const [selectedChild, setSelectedChild] = useState<string>('all');
   const [selectedDishes, setSelectedDishes] = useState<string[]>([]);
   const [loopPlaylist, setLoopPlaylist] = useState(true);
   const [loading, setLoading] = useState(true);
   const [newItem, setNewItem] = useState({ 
-    type: 'image' as 'image' | 'video' | 'web' | 'stream' | 'menu', 
+    type: 'image' as 'image' | 'video' | 'web' | 'stream' | 'menu' | 'tasks', 
     url: '', 
     duration: 10,
     loop: false 
@@ -111,6 +113,10 @@ export default function Admin() {
         formData.append('layout_config', JSON.stringify({ dishIds: selectedDishes }));
       }
 
+      if (newItem.type === 'tasks') {
+        formData.append('layout_config', JSON.stringify({ child: selectedChild }));
+      }
+
       if (sourceType === 'upload' && file) {
         formData.append('file', file);
       } else {
@@ -126,6 +132,7 @@ export default function Admin() {
 
       setNewItem({ type: 'image', url: '', duration: 10, loop: false });
       setSelectedDishes([]);
+      setSelectedChild('all');
       setLayoutConfig({
         mode: 'fullscreen',
         top: 0,
@@ -218,13 +225,14 @@ export default function Admin() {
               <form onSubmit={handleAdd} className="space-y-5">
                 <div>
                   <label className="block text-sm font-bold text-zinc-700 mb-2">Media Type</label>
-                  <div className="grid grid-cols-5 gap-2">
-                    {['image', 'video', 'web', 'stream', 'menu'].map((t) => (
+                  <div className="grid grid-cols-3 gap-2">
+                    {['image', 'video', 'web', 'stream', 'menu', 'tasks'].map((t) => (
                       <button
                         key={t} type="button"
                         onClick={() => {
                           setNewItem({...newItem, type: t as any});
-                          if (t === 'web' || t === 'stream' || t === 'menu') setSourceType('url');
+                          if (t === 'web' || t === 'stream' || t === 'menu' || t === 'tasks') setSourceType('url');
+                          if (t === 'tasks') setNewItem(prev => ({ ...prev, url: 'tasks', type: 'tasks' }));
                         }}
                         className={`py-2 text-[10px] font-bold rounded-lg border transition-all uppercase ${
                           newItem.type === t ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400'
@@ -236,7 +244,7 @@ export default function Admin() {
                   </div>
                 </div>
 
-                {newItem.type !== 'web' && newItem.type !== 'stream' && newItem.type !== 'menu' && (
+                {newItem.type !== 'web' && newItem.type !== 'stream' && newItem.type !== 'menu' && newItem.type !== 'tasks' && (
                   <div className="flex bg-zinc-100 p-1 rounded-xl">
                     <button 
                       type="button" onClick={() => setSourceType('url')}
@@ -267,10 +275,30 @@ export default function Admin() {
                       </span>
                     </label>
                   </div>
+                ) : newItem.type === 'tasks' ? (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                      <p className="text-xs font-bold text-amber-800 uppercase mb-1">Mode Tâches</p>
+                      <p className="text-[10px] text-amber-600">Affiche le tableau des tâches des enfants sur cet écran.</p>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-2">Filtrer par enfant</label>
+                      <select 
+                        value={selectedChild}
+                        onChange={(e) => setSelectedChild(e.target.value)}
+                        className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      >
+                        <option value="all">Tous les enfants</option>
+                        {children.map(child => (
+                          <option key={child} value={child}>{child}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 ) : newItem.type === 'menu' ? (
                   <div className="space-y-4">
                     <select 
-                      value={newItem.url}
+                      value={newItem.url || ''}
                       onChange={(e) => {
                         setNewItem({...newItem, url: e.target.value});
                         setSelectedDishes([]);
@@ -320,7 +348,7 @@ export default function Admin() {
                 ) : (
                   <div>
                     <input 
-                      type="text" placeholder={newItem.type === 'stream' ? "HLS (.m3u8) or DASH (.mpd) URL" : "https://..."} value={newItem.url}
+                      type="text" placeholder={newItem.type === 'stream' ? "HLS (.m3u8) or DASH (.mpd) URL" : "https://..."} value={newItem.url || ''}
                       onChange={(e) => setNewItem({...newItem, url: e.target.value})}
                       className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                     />
@@ -337,7 +365,7 @@ export default function Admin() {
                     <div>
                       <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Duration (s)</label>
                       <input 
-                        type="number" value={newItem.duration}
+                        type="number" value={newItem.duration || 10}
                         onChange={(e) => setNewItem({...newItem, duration: parseInt(e.target.value) || 5})}
                         className="w-full border border-zinc-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
                       />
