@@ -55,13 +55,17 @@ export default function Admin() {
       setLoading(true);
       const res = await fetch(`/api/playlist?screenId=${screenId}`);
       const data = await res.json();
-      // On sépare les items de la configuration globale de l'écran
       setPlaylist(data.items);
       setLoopPlaylist(data.config.loop_playlist);
       
       const menusRes = await fetch('/api/menus');
       const menusData = await menusRes.json();
       setMenus(menusData);
+
+      const tasksRes = await fetch('/api/tasks');
+      const tasksData = await tasksRes.json();
+      const uniqueChildren = Array.from(new Set(tasksData.map((t: any) => t.assigned_to).filter(Boolean))) as string[];
+      setChildren(uniqueChildren);
     } catch (err) {
       console.error('Failed to fetch data', err);
     } finally {

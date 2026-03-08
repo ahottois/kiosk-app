@@ -12,6 +12,7 @@ import {
   eachDayOfInterval, eachMonthOfInterval, isSameDay, isSameMonth
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import Markdown from 'react-markdown';
 import { 
   Trophy, History, LayoutDashboard, TrendingUp, 
   Calendar, ChevronRight, ChevronLeft, Wallet, Check
@@ -380,7 +381,9 @@ const TaskView = ({ layoutConfig }: { layoutConfig?: string }) => {
                     </div>
                   </div>
                   <h3 className="text-3xl font-bold mb-3 uppercase tracking-tight leading-tight group-hover:text-amber-500 transition-colors">{task.title}</h3>
-                  <p className="text-zinc-500 text-lg mb-8 line-clamp-2 font-medium leading-relaxed">{task.description}</p>
+                  <div className="text-zinc-500 text-lg mb-8 font-medium leading-relaxed markdown-body">
+                    <Markdown>{task.description}</Markdown>
+                  </div>
                   
                   <div className="mt-auto">
                     {task.status === 'finished' ? (

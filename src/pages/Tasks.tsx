@@ -95,6 +95,36 @@ export default function Tasks() {
   };
 
   const children = Array.from(new Set(tasks.map(t => t.assigned_to).filter(Boolean))) as string[];
+  
+  // Historique des tâches uniques pour l'autocomplétion
+  const pastTasks = Array.from(
+    tasks.reduce((map, task) => {
+      if (!map.has(task.title)) {
+        map.set(task.title, { 
+          title: task.title, 
+          description: task.description, 
+          reward: task.reward 
+        });
+      }
+      return map;
+    }, new Map<string, { title: string, description: string, reward: number }>())
+    .values()
+  );
+
+  const handleTitleChange = (title: string) => {
+    setNewTask(prev => ({ ...prev, title }));
+    
+    // Si on trouve une correspondance exacte dans l'historique, on remplit le reste
+    const match = pastTasks.find(t => t.title.toLowerCase() === title.toLowerCase());
+    if (match) {
+      setNewTask(prev => ({
+        ...prev,
+        title: match.title, // On garde la casse originale
+        description: match.description,
+        reward: match.reward
+      }));
+    }
+  };
 
   if (loading) return (
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
@@ -167,22 +197,34 @@ export default function Tasks() {
                       <input 
                         required
                         type="text" 
+                        list="titles-list"
                         value={newTask.title}
-                        onChange={e => setNewTask({...newTask, title: e.target.value})}
+                        onChange={e => handleTitleChange(e.target.value)}
                         placeholder="Ex: Ranger la chambre"
                         className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                       />
+                      <datalist id="titles-list">
+                        {pastTasks.map((t, i) => (
+                          <option key={i} value={t.title} />
+                        ))}
+                      </datalist>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Assigné à</label>
                       <input 
                         required
                         type="text" 
+                        list="children-list"
                         value={newTask.assigned_to}
                         onChange={e => setNewTask({...newTask, assigned_to: e.target.value})}
                         placeholder="Prénom de l'enfant"
                         className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                       />
+                      <datalist id="children-list">
+                        {children.map(child => (
+                          <option key={child} value={child} />
+                        ))}
+                      </datalist>
                     </div>
                   </div>
                   <div className="space-y-1.5">
