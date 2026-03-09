@@ -81,6 +81,15 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS family (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL, -- 'Grand-parent', 'Parent', 'Enfant'
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 // --- MIGRATION : AJOUT DES COLONNES SI ELLES N'EXISTENT PAS ---
 // Cela évite les erreurs 500 sur les anciennes bases de données
 try {
@@ -93,6 +102,10 @@ try {
 
 try {
   db.prepare("ALTER TABLE playlist ADD COLUMN layout_config TEXT").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE playlist ADD COLUMN schedule TEXT").run();
 } catch (e) {}
 
 // Initialisation de l'écran par défaut
@@ -334,6 +347,38 @@ app.delete('/api/tasks/:id', (req, res) => {
   }
 });
 
+// --- ROUTES API FAMILY ---
+
+app.get('/api/family', (req, res) => {
+  try {
+    const members = db.prepare('SELECT * FROM family ORDER BY role DESC, name ASC').all();
+    res.json(members);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/family', (req, res) => {
+  try {
+    const { name, role } = req.body;
+    if (!name || !role) return res.status(400).json({ error: 'Nom et rôle requis' });
+    const stmt = db.prepare('INSERT INTO family (name, role) VALUES (?, ?)');
+    const info = stmt.run(name, role);
+    res.json({ id: info.lastInsertRowid });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/family/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM family WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- ROUTES API ---
 
 // Récupérer les écrans et le nombre de médias
@@ -410,7 +455,7 @@ app.get('/api/playlist', (req, res) => {
 // Ajouter un média (Upload ou URL)
 app.post('/api/playlist', upload.single('file'), (req, res) => {
   try {
-    const { type, url, duration, screen_id, loop, layout_config } = req.body;
+    const { type, url, duration, screen_id, loop, layout_config, schedule } = req.body;
     const sid = screen_id || 'default';
     
     // S'assurer que l'écran existe (pour la contrainte de clé étrangère)
@@ -418,8 +463,8 @@ app.post('/api/playlist', upload.single('file'), (req, res) => {
     
     const finalUrl = req.file ? `/uploads/${req.file.filename}` : url;
     
-    const stmt = db.prepare('INSERT INTO playlist (type, url, duration, screen_id, loop, layout_config) VALUES (?, ?, ?, ?, ?, ?)');
-    const info = stmt.run(type, finalUrl, parseInt(duration) || 10, sid, loop === 'true' ? 1 : 0, layout_config || null);
+    const stmt = db.prepare('INSERT INTO playlist (type, url, duration, screen_id, loop, layout_config, schedule) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const info = stmt.run(type, finalUrl, parseInt(duration) || 10, sid, loop === 'true' ? 1 : 0, layout_config || null, schedule || null);
     
     io.to(sid).emit('playlist_updated');
     res.json({ id: info.lastInsertRowid, url: finalUrl });

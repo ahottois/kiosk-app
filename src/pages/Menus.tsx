@@ -37,6 +37,7 @@ interface Ingredient {
 
 export default function Menus() {
   const [menus, setMenus] = useState<Menu[]>([]);
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -296,6 +297,11 @@ export default function Menus() {
     }
   };
 
+  const filteredMenus = menus.filter(menu => 
+    menu.name.toLowerCase().includes(menuSearchQuery.toLowerCase()) ||
+    menu.title.toLowerCase().includes(menuSearchQuery.toLowerCase())
+  );
+
   if (editingMenu) {
     return (
       <div className="min-h-screen bg-zinc-50 p-8 font-sans">
@@ -546,7 +552,7 @@ export default function Menus() {
   return (
     <div className="min-h-screen bg-zinc-50 p-8 font-sans">
       <div className="max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div className="flex items-center gap-4">
             <Link to="/admin" className="p-2 hover:bg-zinc-200 rounded-full transition-colors">
               <ChevronLeft className="w-6 h-6 text-zinc-600" />
@@ -555,12 +561,32 @@ export default function Menus() {
               Gestion <span className="text-zinc-300 font-light">/</span> Menus
             </h1>
           </div>
-          <button 
-            onClick={handleCreateNew}
-            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-          >
-            <Plus className="w-5 h-5" /> Créer un Menu
-          </button>
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+              <input 
+                type="text" 
+                placeholder="Filtrer par nom..." 
+                value={menuSearchQuery}
+                onChange={(e) => setMenuSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:border-indigo-500 transition-all"
+              />
+              {menuSearchQuery && (
+                <button 
+                  onClick={() => setMenuSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-100 rounded-full"
+                >
+                  <X className="w-3 h-3 text-zinc-400" />
+                </button>
+              )}
+            </div>
+            <button 
+              onClick={handleCreateNew}
+              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 whitespace-nowrap"
+            >
+              <Plus className="w-5 h-5" /> Créer un Menu
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -574,7 +600,7 @@ export default function Menus() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {menus.map((menu) => (
+            {filteredMenus.map((menu) => (
               <div key={menu.id} className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-sm hover:shadow-md transition-all group">
                 <div className="flex justify-between items-start mb-4">
                   <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600">

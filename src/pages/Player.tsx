@@ -26,6 +26,7 @@ interface PlaylistItem {
   order_index: number;
   loop?: boolean;
   layout_config?: string;
+  schedule?: string;
 }
 
 interface MenuData {
@@ -614,8 +615,7 @@ export default function Player() {
     try {
       const res = await fetch(`/api/playlist?screenId=${screenId}`);
       const data = await res.json();
-      // On s'attend à recevoir { items: [], config: { loop_playlist: boolean } }
-      setPlaylist(data.items || data); // Fallback si ta route renvoie directement l'array
+      setPlaylist(data.items || data);
       if (data.config) {
         setConfig(data.config);
       }
@@ -624,13 +624,49 @@ export default function Player() {
     }
   };
 
+  const isItemActive = (item: PlaylistItem) => {
+    if (!item.schedule) return true;
+    try {
+      const schedule = JSON.parse(item.schedule);
+      if (!schedule.enabled) return true;
+
+      const now = new Date();
+      const currentDay = now.getDay(); // 0-6 (Sun-Sat)
+      
+      // Check day
+      if (schedule.days && schedule.days.length > 0) {
+        if (!schedule.days.includes(currentDay)) return false;
+      }
+
+      // Check time
+      if (schedule.startTime && schedule.endTime) {
+        const [startH, startM] = schedule.startTime.split(':').map(Number);
+        const [endH, endM] = schedule.endTime.split(':').map(Number);
+        
+        const startTime = new Date(now);
+        startTime.setHours(startH, startM, 0, 0);
+        
+        const endTime = new Date(now);
+        endTime.setHours(endH, endM, 0, 0);
+
+        if (now < startTime || now > endTime) return false;
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Failed to parse schedule', e);
+      return true;
+    }
+  };
+
+  const activePlaylist = useMemo(() => {
+    return playlist.filter(isItemActive);
+  }, [playlist]);
+
   const nextSlide = () => {
     setCurrentIndex((prev) => {
       const nextIdx = prev + 1;
-      
-      // Si on arrive à la fin de la liste
-      if (nextIdx >= playlist.length) {
-        // Si la boucle globale est activée, on repart à 0, sinon on reste bloqué au dernier
+      if (nextIdx >= activePlaylist.length) {
         return config.loop_playlist ? 0 : prev;
       }
       return nextIdx;
@@ -639,6 +675,11 @@ export default function Player() {
 
   useEffect(() => {
     fetchPlaylist();
+    
+    // Refresh active playlist every minute to handle time-based scheduling
+    const interval = setInterval(() => {
+      fetchPlaylist();
+    }, 60000);
 
     // Connexion Socket.io pour les mises à jour en direct
     const socket = io({
@@ -659,14 +700,21 @@ export default function Player() {
 
     return () => {
       socket.disconnect();
+      clearInterval(interval);
     };
   }, [screenId]);
 
   useEffect(() => {
     // Ne rien faire si le player n'est pas démarré ou si la liste est vide
-    if (!started || playlist.length === 0) return;
+    if (!started || activePlaylist.length === 0) return;
 
-    const currentItem = playlist[currentIndex];
+    // Reset index if it's out of bounds after filtering
+    if (currentIndex >= activePlaylist.length) {
+      setCurrentIndex(0);
+      return;
+    }
+
+    const currentItem = activePlaylist[currentIndex];
     
     // NETTOYAGE : On annule tout timer précédent
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -676,7 +724,7 @@ export default function Player() {
     if (currentItem.loop) return;
 
     // 2. Si on est sur le dernier item et que la playlist ne boucle pas, on s'arrête là
-    if (currentIndex === playlist.length - 1 && !config.loop_playlist) return;
+    if (currentIndex === activePlaylist.length - 1 && !config.loop_playlist) return;
 
     // 3. Sinon, on programme le passage au suivant selon la durée définie (uniquement pour images et web)
     if (currentItem.type !== 'video' && currentItem.type !== 'stream') {
@@ -688,15 +736,16 @@ export default function Player() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [currentIndex, started, playlist, config.loop_playlist]);
+  }, [currentIndex, started, activePlaylist, config.loop_playlist]);
 
   // Écran d'attente si aucune donnée n'est disponible
-  if (playlist.length === 0) {
+  if (activePlaylist.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-900 text-white font-mono text-sm">
         <div className="flex flex-col items-center gap-4">
           <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
           <p>Chargement de la playlist pour l'écran : {screenId}</p>
+          {playlist.length > 0 && <p className="text-xs text-zinc-500">Aucun média actif selon le planning actuel.</p>}
         </div>
       </div>
     );
@@ -718,7 +767,7 @@ export default function Player() {
     );
   }
 
-  const currentItem = playlist[currentIndex];
+  const currentItem = activePlaylist[currentIndex];
 
   // Parsing de la configuration de mise en page
   let layoutStyle: React.CSSProperties = {

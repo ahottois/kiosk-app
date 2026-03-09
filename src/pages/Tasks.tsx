@@ -20,6 +20,7 @@ interface Task {
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [family, setFamily] = useState<{name: string, role: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTask, setNewTask] = useState({
@@ -34,6 +35,10 @@ export default function Tasks() {
       const res = await fetch('/api/tasks');
       const data = await res.json();
       setTasks(data);
+
+      const familyRes = await fetch('/api/family');
+      const familyData = await familyRes.json();
+      setFamily(familyData);
     } catch (err) {
       console.error('Failed to fetch tasks', err);
     } finally {
@@ -221,8 +226,8 @@ export default function Tasks() {
                         className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                       />
                       <datalist id="children-list">
-                        {children.map(child => (
-                          <option key={child} value={child} />
+                        {family.map(member => (
+                          <option key={member.name} value={member.name} />
                         ))}
                       </datalist>
                     </div>
