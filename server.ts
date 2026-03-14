@@ -7,6 +7,16 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
+import session from 'express-session';
+import bcrypt from 'bcryptjs';
+import { GoogleGenAI } from "@google/genai";
+
+declare module 'express-session' {
+  interface SessionData {
+    userId: number;
+    username: string;
+  }
+}
 
 const PORT = 3000;
 const app = express();
@@ -21,11 +31,38 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
+// Configuration de la session
+app.use(session({
+  secret: 'kiosk-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'none',
+    httpOnly: true,
+  }
+}));
+
 // S'assurer que le dossier des uploads existe
 const uploadsDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
+    cb(null, Date.now() + '-' + safeName);
+  },
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
 
 // Servir les fichiers statiques du dossier uploads
 app.use('/uploads', express.static(uploadsDir));
@@ -39,6 +76,34 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS screens (
     id TEXT PRIMARY KEY,
     loop_playlist INTEGER DEFAULT 1,
+    theme TEXT DEFAULT 'modern',
+    layout_mode TEXT DEFAULT 'fullscreen',
+    sidebar_config TEXT,
+    flash_message TEXT,
+    last_ping DATETIME,
+    current_item_id INTEGER,
+    uptime_start DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    type TEXT NOT NULL,
+    size INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    role TEXT DEFAULT 'admin',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -108,25 +173,141 @@ try {
   db.prepare("ALTER TABLE playlist ADD COLUMN schedule TEXT").run();
 } catch (e) {}
 
+try {
+  db.prepare("ALTER TABLE screens ADD COLUMN theme TEXT DEFAULT 'modern'").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE screens ADD COLUMN layout_mode TEXT DEFAULT 'fullscreen'").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE screens ADD COLUMN sidebar_config TEXT").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE screens ADD COLUMN flash_message TEXT").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE screens ADD COLUMN last_ping DATETIME").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE screens ADD COLUMN current_item_id INTEGER").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE screens ADD COLUMN uptime_start DATETIME").run();
+} catch (e) {}
+
 // Initialisation de l'écran par défaut
 db.prepare("INSERT OR IGNORE INTO screens (id) VALUES ('default')").run();
 
-// --- CONFIGURATION MULTER (UPLOADS) ---
+// Création d'un utilisateur admin par défaut si aucun n'existe
+const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+if (userCount.count === 0) {
+  const hashedPassword = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run('admin', hashedPassword);
+}
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
-    cb(null, Date.now() + '-' + safeName);
-  },
+// --- MIDDLEWARE D'AUTHENTIFICATION ---
+
+const requireAuth = (req: any, res: any, next: any) => {
+  if (req.session.userId) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Non authentifié' });
+  }
+};
+
+// --- ROUTES D'AUTHENTIFICATION ---
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+  
+  if (user && bcrypt.compareSync(password, user.password)) {
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    res.json({ success: true, user: { id: user.id, username: user.username } });
+  } else {
+    res.status(401).json({ error: 'Identifiants invalides' });
+  }
 });
 
-const upload = multer({ 
-  storage,
-  limits: { fileSize: 100 * 1024 * 1024 } 
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ success: true });
+  });
 });
+
+app.get('/api/auth/me', (req, res) => {
+  if (req.session.userId) {
+    res.json({ id: req.session.userId, username: req.session.username });
+  } else {
+    res.status(401).json({ error: 'Non authentifié' });
+  }
+});
+
+// --- ROUTES MÉDIATHÈQUE ---
+
+app.get('/api/media', requireAuth, (req, res) => {
+  try {
+    const media = db.prepare('SELECT * FROM media ORDER BY created_at DESC').all();
+    res.json(media);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/media', requireAuth, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Aucun fichier' });
+    
+    const url = `/uploads/${req.file.filename}`;
+    const type = req.file.mimetype.startsWith('image/') ? 'image' : 'video';
+    const stmt = db.prepare('INSERT INTO media (name, url, type, size) VALUES (?, ?, ?, ?)');
+    const info = stmt.run(req.file.originalname, url, type, req.file.size);
+    
+    res.json({ id: info.lastInsertRowid, url, name: req.file.originalname, type });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/media/:id', requireAuth, (req, res) => {
+  try {
+    const media = db.prepare('SELECT url FROM media WHERE id = ?').get(req.params.id) as any;
+    if (media) {
+      const filePath = path.join(process.cwd(), media.url);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      db.prepare('DELETE FROM media WHERE id = ?').run(req.params.id);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- ROUTES IA (GEMINI) ---
+
+app.post('/api/ai/generate', requireAuth, async (req, res) => {
+  try {
+    const { prompt, systemInstruction } = req.body;
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: { systemInstruction }
+    });
+    res.json({ text: response.text });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- ROUTES API INGREDIENTS ---
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS ingredients (
@@ -385,7 +566,7 @@ app.delete('/api/family/:id', (req, res) => {
 app.get('/api/screens', (req, res) => {
   try {
     const screens = db.prepare(`
-      SELECT s.id as screen_id, s.loop_playlist, COUNT(p.id) as item_count 
+      SELECT s.id as screen_id, s.loop_playlist, s.last_ping, s.current_item_id, s.uptime_start, COUNT(p.id) as item_count 
       FROM screens s
       LEFT JOIN playlist p ON s.id = p.screen_id
       GROUP BY s.id
@@ -408,14 +589,32 @@ app.post('/api/screens', (req, res) => {
   }
 });
 
-// Configurer le mode boucle de l'écran
+// Configurer le mode boucle, le thème et le layout de l'écran
 app.post('/api/screens/config', (req, res) => {
   try {
-    const { screenId, loopPlaylist } = req.body;
-    db.prepare("UPDATE screens SET loop_playlist = ? WHERE id = ?")
-      .run(loopPlaylist ? 1 : 0, screenId);
+    const { screenId, loopPlaylist, theme, layoutMode, sidebarConfig } = req.body;
+    db.prepare("UPDATE screens SET loop_playlist = ?, theme = ?, layout_mode = ?, sidebar_config = ? WHERE id = ?")
+      .run(
+        loopPlaylist !== undefined ? (loopPlaylist ? 1 : 0) : 1, 
+        theme || 'modern', 
+        layoutMode || 'fullscreen',
+        sidebarConfig ? JSON.stringify(sidebarConfig) : null,
+        screenId
+      );
     
     io.to(screenId).emit('playlist_updated');
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Envoyer un message flash à un écran
+app.post('/api/screens/flash', (req, res) => {
+  try {
+    const { screenId, message } = req.body;
+    // message: { text: string, duration: number, type: 'info' | 'warning' | 'error' }
+    io.to(screenId).emit('flash_message', message);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -438,13 +637,16 @@ app.delete('/api/screens/:screenId', (req, res) => {
 app.get('/api/playlist', (req, res) => {
   try {
     const screenId = req.query.screenId || 'default';
-    const screenInfo = db.prepare("SELECT loop_playlist FROM screens WHERE id = ?").get(screenId) as any;
+    const screenInfo = db.prepare("SELECT loop_playlist, theme, layout_mode, sidebar_config FROM screens WHERE id = ?").get(screenId) as any;
     const items = db.prepare('SELECT * FROM playlist WHERE screen_id = ? ORDER BY order_index ASC').all(screenId);
     
     res.json({
       items,
       config: {
-        loop_playlist: screenInfo ? !!screenInfo.loop_playlist : true
+        loop_playlist: screenInfo ? !!screenInfo.loop_playlist : true,
+        theme: screenInfo ? screenInfo.theme : 'modern',
+        layout_mode: screenInfo ? screenInfo.layout_mode : 'fullscreen',
+        sidebar_config: screenInfo && screenInfo.sidebar_config ? JSON.parse(screenInfo.sidebar_config) : null
       }
     });
   } catch (err: any) {
@@ -524,12 +726,42 @@ io.on('connection', (socket) => {
   const screenId = socket.handshake.query.screenId as string || 'default';
   socket.join(screenId);
 
+  // Health Monitoring: Ping from screen
+  socket.on('screen_ping', (data) => {
+    const { currentItemId } = data;
+    db.prepare("UPDATE screens SET last_ping = CURRENT_TIMESTAMP, current_item_id = ? WHERE id = ?")
+      .run(currentItemId || null, screenId);
+    
+    // Si l'uptime_start n'est pas défini, on le définit maintenant
+    const screen = db.prepare("SELECT uptime_start FROM screens WHERE id = ?").get(screenId) as any;
+    if (!screen.uptime_start) {
+      db.prepare("UPDATE screens SET uptime_start = CURRENT_TIMESTAMP WHERE id = ?").run(screenId);
+    }
+  });
+
   socket.on('force_reload', (sid) => {
     io.to(sid || screenId).emit('reload_player');
   });
 
   socket.on('next_slide', (sid) => {
     io.to(sid || screenId).emit('next_slide');
+  });
+
+  socket.on('prev_slide', (sid) => {
+    io.to(sid || screenId).emit('prev_slide');
+  });
+
+  socket.on('pause_player', (sid) => {
+    io.to(sid || screenId).emit('pause_player');
+  });
+
+  socket.on('resume_player', (sid) => {
+    io.to(sid || screenId).emit('resume_player');
+  });
+
+  socket.on('flash_message', (data) => {
+    const { sid, message } = data;
+    io.to(sid || screenId).emit('flash_message', message);
   });
 });
 
